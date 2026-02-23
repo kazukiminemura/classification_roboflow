@@ -5,6 +5,7 @@ import shutil
 from typing import Tuple
 
 from dotenv import load_dotenv
+from roboflow import Roboflow
 
 
 def parse_args() -> argparse.Namespace:
@@ -120,4 +121,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    from roboflow import Roboflow
