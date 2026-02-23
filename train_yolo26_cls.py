@@ -5,7 +5,6 @@ import shutil
 from typing import Tuple
 
 from dotenv import load_dotenv
-from roboflow import Roboflow
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,10 +39,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="artifacts", help="Output directory")
     parser.add_argument("--run-name", default="yolo26n_cls_finetune", help="Training run name")
     parser.add_argument("--patience", default=20, type=int, help="Early stopping patience")
+    parser.add_argument(
+        "--use-albumentations",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable extra albumentations if package is available",
+    )
+    parser.add_argument(
+        "--export-openvino",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Export trained best.pt to OpenVINO IR automatically",
+    )
     return parser.parse_args()
 
 
 def download_dataset(args: argparse.Namespace) -> pathlib.Path:
+    from roboflow import Roboflow
+
     if not args.workspace or not args.project or args.version is None:
         raise ValueError("workspace/project/version are required when --dataset-dir is not set.")
     if not args.api_key:
@@ -101,8 +114,33 @@ def main():
 
     from ultralytics import YOLO
 
+    augmentations = None
+    if args.use_albumentations:
+        try:
+            import albumentations as A
+
+            max_dropout = max(1, int(args.img_size * 0.2))
+            augmentations = [
+                A.ToGray(p=0.05),
+                A.GaussNoise(p=0.1),
+                A.MotionBlur(p=0.1),
+                A.RandomBrightnessContrast(p=0.2),
+                A.HueSaturationValue(p=0.2),
+                A.CoarseDropout(
+                    max_holes=8,
+                    max_height=max_dropout,
+                    max_width=max_dropout,
+                    fill_value=0,
+                    p=0.1,
+                ),
+            ]
+        except ImportError:
+            print(
+                "Warning: albumentations is not installed; grayscale/noise/blur/cutout augmentations will be skipped."
+            )
+
     model = YOLO(args.model)
-    model.train(
+    train_kwargs = dict(
         data=str(dataset_root),
         epochs=total_epochs,
         imgsz=args.img_size,
@@ -113,10 +151,47 @@ def main():
         workers=args.workers,
         device=args.device,
         patience=args.patience,
+        cos_lr=True,
+        degrees=90.0,
+        translate=0.1,
+        scale=0.5,
+        shear=2.0,
+        flipud=0.2,
+        fliplr=0.5,
+        hsv_h=0.015,
+        hsv_s=0.7,
+        hsv_v=0.4,
     )
+    if augmentations is not None:
+        train_kwargs["augmentations"] = augmentations
+
+    try:
+        train_results = model.train(**train_kwargs)
+    except TypeError as exc:
+        if "augmentations" in train_kwargs:
+            print(f"Warning: current Ultralytics version does not support `augmentations` argument: {exc}")
+            train_kwargs.pop("augmentations", None)
+            train_results = model.train(**train_kwargs)
+        else:
+            raise
+
+    run_dir = pathlib.Path(getattr(train_results, "save_dir", output_dir / args.run_name))
+    best_weights = run_dir / "weights" / "best.pt"
+    if not best_weights.exists():
+        fallback = run_dir / "weights" / "last.pt"
+        if fallback.exists():
+            best_weights = fallback
+
+    if args.export_openvino:
+        if best_weights.exists():
+            export_model = YOLO(str(best_weights))
+            openvino_output = export_model.export(format="openvino", imgsz=args.img_size)
+            print(f"Exported OpenVINO IR to: {openvino_output}")
+        else:
+            print(f"Warning: best/last weights not found under {run_dir / 'weights'}. Skipped OpenVINO export.")
 
     print(f"Saved labels to: {labels_path}")
-    print(f"Training outputs under: {output_dir / args.run_name}")
+    print(f"Training outputs under: {run_dir}")
 
 
 if __name__ == "__main__":
