@@ -1,0 +1,2 @@
+﻿tensorflow>=2.15,<2.18
+roboflow>=1.1.20
