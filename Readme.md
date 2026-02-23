@@ -1,8 +1,8 @@
 ﻿# classification_roboflow
 
-Roboflowの画像分類データセットを使って、`MobileNetV2`をファインチューニングする最小構成です。
+Roboflowの画像分類データセットを使って、`MobileNetV2`をローカル環境でファインチューニングする構成です。
 
-## セットアップ
+## 1. セットアップ
 
 ```powershell
 python -m venv .venv
@@ -10,21 +10,45 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## 学習実行
-
-`ROBOFLOW_API_KEY` を環境変数に入れるか、`--api-key`を指定してください。
+## 2. 環境変数を設定
 
 ```powershell
-$env:ROBOFLOW_API_KEY="YOUR_API_KEY"
-python train_mobilenet.py --workspace <workspace_slug> --project <project_slug> --version <dataset_version>
+Copy-Item .env.example .env
 ```
 
-主なオプション:
+`.env` を編集:
+
+- `ROBOFLOW_API_KEY`
+- `ROBOFLOW_WORKSPACE`
+- `ROBOFLOW_PROJECT`
+- `ROBOFLOW_VERSION`
+
+## 3. 学習実行（ローカル）
+
+```powershell
+.\run_train.ps1
+```
+
+`run_train.ps1` は `.env` を読み込み、`train_mobilenet.py` を起動します。
+
+## 4. 既にローカルにデータセットがある場合
+
+`.env` に `DATASET_DIR` を設定すると、Roboflowから再ダウンロードせずに学習します。
+
+```env
+DATASET_DIR=C:\path\to\dataset
+```
+
+## 主なオプション（直接実行時）
+
+```powershell
+python train_mobilenet.py --workspace <workspace> --project <project> --version <version> --epochs-head 5 --epochs-finetune 10
+```
 
 - `--img-size` 入力解像度（デフォルト `224`）
-- `--epochs-head` ヘッド学習エポック数（デフォルト `5`）
-- `--epochs-finetune` 微調整エポック数（デフォルト `10`）
+- `--batch-size` バッチサイズ（デフォルト `32`）
 - `--finetune-layers` 解凍するMobileNet上位レイヤ数（デフォルト `30`）
+- `--dataset-dir` ローカルデータセットを使うパス
 - `--output-dir` 出力先（デフォルト `artifacts`）
 
 ## 出力

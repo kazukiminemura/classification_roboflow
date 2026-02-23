@@ -4,17 +4,24 @@ import pathlib
 from typing import Tuple
 
 import tensorflow as tf
+from dotenv import load_dotenv
 from roboflow import Roboflow
 
 
 def parse_args() -> argparse.Namespace:
+    load_dotenv()
     parser = argparse.ArgumentParser(
         description="Train/fine-tune MobileNetV2 with a Roboflow classification dataset"
     )
     parser.add_argument("--api-key", default=os.getenv("ROBOFLOW_API_KEY"), help="Roboflow API key")
-    parser.add_argument("--workspace", required=True, help="Roboflow workspace slug")
-    parser.add_argument("--project", required=True, help="Roboflow project slug")
-    parser.add_argument("--version", required=True, type=int, help="Dataset version number")
+    parser.add_argument("--workspace", default=None, help="Roboflow workspace slug")
+    parser.add_argument("--project", default=None, help="Roboflow project slug")
+    parser.add_argument("--version", default=None, type=int, help="Dataset version number")
+    parser.add_argument(
+        "--dataset-dir",
+        default=None,
+        help="Local dataset root path. If set, skip Roboflow download and use this path.",
+    )
     parser.add_argument(
         "--format",
         default="folder",
@@ -38,6 +45,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def download_dataset(args: argparse.Namespace) -> pathlib.Path:
+    if not args.workspace or not args.project or args.version is None:
+        raise ValueError(
+            "workspace/project/version are required when --dataset-dir is not set."
+        )
     if not args.api_key:
         raise ValueError("API key is required. Set --api-key or ROBOFLOW_API_KEY.")
 
@@ -127,7 +138,7 @@ def compile_model(model: tf.keras.Model, learning_rate: float):
 
 def main():
     args = parse_args()
-    dataset_root = download_dataset(args)
+    dataset_root = pathlib.Path(args.dataset_dir) if args.dataset_dir else download_dataset(args)
     train_dir, valid_dir = resolve_data_dirs(dataset_root)
     train_ds, valid_ds, class_names = make_datasets(
         train_dir, valid_dir, args.img_size, args.batch_size
